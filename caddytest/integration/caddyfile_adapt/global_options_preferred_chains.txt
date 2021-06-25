@@ -2,7 +2,7 @@
 	preferred_chains smallest
 }
 
-localhost
+example.com
 ----------
 {
 	"apps": {
@@ -17,7 +17,7 @@ localhost
 							"match": [
 								{
 									"host": [
-										"localhost"
+										"example.com"
 									]
 								}
 							],
@@ -32,7 +32,7 @@ localhost
 				"policies": [
 					{
 						"subjects": [
-							"localhost"
+							"example.com"
 						],
 						"issuers": [
 							{
