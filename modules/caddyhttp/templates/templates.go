@@ -36,12 +36,21 @@ func init() {
 // Templates is a middleware which executes response bodies as Go templates.
 // The syntax is documented in the Go standard library's
 // [text/template package](https://golang.org/pkg/text/template/).
+// Note that ANY response body that matches and qualifies may be evaluated,
+// even if it comes from a proxied backend.
 //
-// ⚠️ Template functions/actions are still experimental, so they are subject to change.
+// ⚠️ Template functions/actions can access the environment, files on disk,
+// and make HTTP requests. This is extremely useful, but you need to make
+// sure templates are only evaluated on content that you trust, control, or
+// at least sanitize properly.
 //
-// Custom template functions can be registered by creating a plugin module under the `http.handlers.templates.functions.*` namespace that implements the `CustomFunctions` interface.
+// ⚠️ Templates are still experimental, so they are subject to change.
 //
 // [All Sprig functions](https://masterminds.github.io/sprig/) are supported.
+//
+// Custom template functions can be registered by creating a plugin module
+// under the `http.handlers.templates.functions.*` namespace that implements
+// the `CustomFunctions` interface.
 //
 // In addition to the standard functions and the Sprig library, Caddy adds
 // extra functions and data that are available to a template:
