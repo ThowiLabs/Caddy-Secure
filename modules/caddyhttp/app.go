@@ -28,6 +28,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/net/netutil"
+
 	"go.uber.org/zap"
 	"golang.org/x/net/http2"
 
@@ -374,6 +376,9 @@ func (app *App) Provision(ctx caddy.Context) error {
 			primaryRoute = srv.Routes.Compile(emptyHandler)
 		}
 		srv.primaryHandlerChain = srv.wrapPrimaryRoute(primaryRoute)
+		if !srv.DisableAutomaticProtection {
+			srv.guard = newRequestGuard()
+		}
 
 		// pre-compile the error handler chain
 		if srv.Errors != nil {
@@ -582,6 +587,7 @@ func (app *App) Start() error {
 					if !ok {
 						return fmt.Errorf("network '%s' cannot handle HTTP/1 or HTTP/2 connections", listenAddr.Network)
 					}
+					ln = netutil.LimitListener(ln, 128)
 
 					// wrap listener before TLS (up to the TLS placeholder wrapper)
 					var lnWrapperIdx int
@@ -922,14 +928,14 @@ const (
 	// for closing idle connections; useful to avoid resource
 	// exhaustion behind hungry CDNs, for example (we've had
 	// several complaints without this).
-	defaultIdleTimeout = caddy.Duration(5 * time.Minute)
+	defaultIdleTimeout = caddy.Duration(time.Minute)
 
 	// defaultReadHeaderTimeout is the default timeout for
 	// reading HTTP headers from clients. Headers are generally
 	// small, often less than 1 KB, so it shouldn't take a
 	// long time even on legitimately slow connections or
 	// busy servers to read it.
-	defaultReadHeaderTimeout = caddy.Duration(time.Minute)
+	defaultReadHeaderTimeout = caddy.Duration(10 * time.Second)
 
 	// defaultReadIdleTimeout and defaultWriteIdleTimeout mitigate
 	// slowloris-style attacks on the request body and response write.

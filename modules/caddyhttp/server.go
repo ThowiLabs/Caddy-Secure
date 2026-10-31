@@ -64,7 +64,7 @@ type Server struct {
 	ReadTimeout caddy.Duration `json:"read_timeout,omitempty"`
 
 	// ReadHeaderTimeout is like ReadTimeout but for request headers.
-	// Default is 1 minute.
+	// Default is 10 seconds in Caddy Secure.
 	ReadHeaderTimeout caddy.Duration `json:"read_header_timeout,omitempty"`
 
 	// How long to allow a read from a client's upload to stall before
@@ -112,7 +112,7 @@ type Server struct {
 
 	// IdleTimeout is the maximum time to wait for the next request
 	// when keep-alives are enabled. If zero, a default timeout of
-	// 5m is applied to help avoid resource exhaustion.
+	// 1m is applied to help avoid resource exhaustion.
 	IdleTimeout caddy.Duration `json:"idle_timeout,omitempty"`
 
 	// KeepAliveInterval is the interval at which TCP keepalive packets
@@ -218,6 +218,11 @@ type Server struct {
 	//
 	// TODO: This is an EXPERIMENTAL feature. Subject to change or removal.
 	ExpectedDotHeaders []string `json:"expected_dot_headers,omitempty"`
+
+	// DisableAutomaticProtection disables lightweight request limits and
+	// safeguards that are enabled by default in the Caddy Secure build.
+	// Use only when a separate trusted edge enforces equivalent limits.
+	DisableAutomaticProtection bool `json:"disable_automatic_protection,omitempty"`
 
 	// Routes describes how this server will handle requests.
 	// Routes are executed sequentially. First a route's matchers
@@ -379,6 +384,7 @@ type Server struct {
 	errorLogger  *zap.Logger
 	traceLogger  *zap.Logger
 	ctx          caddy.Context
+	guard        *requestGuard
 
 	server    *http.Server
 	h3server  *http3.Server
@@ -551,6 +557,20 @@ var (
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
+	if s.guard != nil {
+		if protectedAssetPath(r.URL.Path) {
+			http.Error(w, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+			return
+		}
+		release, ok := s.guard.acquire(r.RemoteAddr, start)
+		if !ok {
+			w.Header().Set("Retry-After", "1")
+			http.Error(w, http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
+			return
+		}
+		defer release()
+	}
+
 	// If there are listener wrappers that process tls connections but don't return a *tls.Conn, this field will be nil.
 	if r.TLS == nil {
 		if tlsConnStateFunc, ok := r.Context().Value(tlsConnectionStateFuncCtxKey).(func() *tls.ConnectionState); ok {
@@ -622,6 +642,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// set the Server header
 	h := w.Header()
 	h["Server"] = serverHeader
+	h.Set("X-Content-Type-Options", "nosniff")
+	h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 
 	// advertise HTTP/3, if enabled
 	if s.h3server != nil && r.ProtoMajor < 3 {

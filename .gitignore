@@ -29,3 +29,17 @@ caddy-dist
 # IDE files
 .idea/
 .vscode/
+
+# Caddy Secure builds
+/caddy-secure
+/.secure-build/
+
+# generated local server binaries
+/tmp-caddy-secure*
+
+# Contexto local descifrado (no publicar)
+/contexto/
+/tareas/
+/contexto.md
+/.agents-*.tmp
+/.agents-restore-*/
