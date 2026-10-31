@@ -1,5 +1,5 @@
 #!/bin/sh
-# Caddys installer for Alpine Linux/OpenRC (x86_64).
+# Caddys installer for Alpine Linux/OpenRC (amd64/arm64).
 # Source: https://github.com/ThowiLabs/Caddy-Secure
 set -eu
 
@@ -12,7 +12,11 @@ ENVFILE='/etc/conf.d/caddys'
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 [ "$(id -u)" -eq 0 ] || fail 'ejecuta este script como root (sudo sh install.sh)'
 [ -f /etc/alpine-release ] || fail 'instalador disponible únicamente para Alpine Linux'
-[ "$(uname -m)" = 'x86_64' ] || fail 'esta versión está compilada únicamente para Linux x86_64'
+case "$(uname -m)" in
+    x86_64) arch=amd64 ;;
+    aarch64) arch=arm64 ;;
+    *) fail 'arquitectura no soportada: solo x86_64 y aarch64' ;;
+esac
 command -v rc-service >/dev/null || fail 'OpenRC no está disponible'
 command -v gzip >/dev/null || fail 'gzip no está disponible'
 command -v sha256sum >/dev/null || fail 'sha256sum no está disponible'
@@ -31,11 +35,11 @@ fi
 work=$(mktemp -d /tmp/caddys-install.XXXXXXXX) || exit 1
 trap 'rm -rf "$work"' 0
 trap 'exit 130' 1 2 3 15
-printf 'Descargando Caddys para Alpine Linux x86_64...\n'
-fetch "$BASE/caddys-linux-amd64.gz" "$work/caddys-linux-amd64.gz"
-fetch "$BASE/caddys-linux-amd64.gz.sha256" "$work/caddys-linux-amd64.gz.sha256"
-(cd "$work" && sha256sum -c caddys-linux-amd64.gz.sha256) || fail 'verificación SHA-256 fallida'
-gzip -dc "$work/caddys-linux-amd64.gz" > "$work/$NAME"
+printf 'Descargando Caddys para Alpine Linux %s...\n' "$arch"
+fetch "$BASE/caddys-linux-$arch.gz" "$work/caddys-linux-$arch.gz"
+fetch "$BASE/caddys-linux-$arch.gz.sha256" "$work/caddys-linux-$arch.gz.sha256"
+(cd "$work" && sha256sum -c "caddys-linux-$arch.gz.sha256") || fail 'verificación SHA-256 fallida'
+gzip -dc "$work/caddys-linux-$arch.gz" > "$work/$NAME"
 chmod 755 "$work/$NAME"
 "$work/$NAME" version
 

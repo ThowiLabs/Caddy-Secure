@@ -43,3 +43,8 @@ caddy-dist
 /contexto.md
 /.agents-*.tmp
 /.agents-restore-*/
+
+# Caddys distribution artifacts
+/caddys
+/caddys.exe
+/dist-caddys/

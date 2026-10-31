@@ -20,11 +20,12 @@ Sin directivas adicionales, cada servidor HTTP provisionado aplica:
 Requiere Go 1.26 o superior:
 
 ```sh
-go build -trimpath -ldflags='-s -w' -o caddys ./cmd/caddy
+make build
 ./caddys version
+# Alternativa: go build ./cmd/caddys
 ```
 
-## Instalación sencilla en Alpine Linux (x86_64)
+## Instalación sencilla en Alpine Linux (amd64/arm64)
 
 Binario y script oficiales de este fork alojados en el servidor de distribución:
 
@@ -34,7 +35,7 @@ less install.sh  # Revisa el instalador antes de concederle privilegios
 sudo sh install.sh
 ```
 
-Requiere Alpine Linux con OpenRC, acceso HTTPS y `curl` (o `wget`). Valida el SHA-256 del binario descargado, prueba el Caddyfile existente, configura el servicio **`caddys`** y habilita su inicio automático. Conserva los certificados y la configuración existente y guarda copias locales para revertir. Si no existía un Caddyfile, escucha en `:8080` por defecto. No elimina paquetes apk de Caddy instalados por el sistema.
+Requiere Alpine Linux con OpenRC, amd64 o arm64, acceso HTTPS y `curl` (o `wget`). Valida el SHA-256 del binario descargado, prueba el Caddyfile existente, configura el servicio **`caddys`** y habilita su inicio automático. Conserva los certificados y la configuración existente y guarda copias locales para revertir. Si no existía un Caddyfile, escucha en `:8080` por defecto. No elimina paquetes apk de Caddy instalados por el sistema.
 
 ```sh
 rc-service caddys status
@@ -42,7 +43,7 @@ rc-service caddys restart
 caddys version   # si /usr/local/sbin aparece en PATH
 ```
 
-Descarga manual del ejecutable comprimido: `https://pastelesjudith.duckdns.org/caddys/caddys-linux-amd64.gz`; suma de comprobación: mismo URL con sufijo `.sha256`. Este script solo es válido para Alpine Linux x86_64; no lo uses en Debian, Fedora o ARM sin portar el servicio e instalar la compilación específica. La dirección del servidor de descarga y su seguridad HTTPS son parte de la cadena de confianza.
+Descarga manual: `https://pastelesjudith.duckdns.org/caddys/caddys-linux-amd64.gz` o `caddys-linux-arm64.gz`; hashes en `SHA256SUMS` y en los ficheros correspondientes `.sha256`. El script es solo para Alpine/OpenRC. La dirección del servidor de descarga y su seguridad HTTPS son parte de la cadena de confianza.
 
 ## Ejecución en VPS con 500 MB RAM y 1 vCPU
 
@@ -51,6 +52,12 @@ GOMAXPROCS=1 GOMEMLIMIT=320MiB ./caddys run --config /etc/caddy/Caddyfile
 ```
 
 No fijes `GOMEMLIMIT` a la memoria física completa: Go necesita margen para pila, código, SO, TLS y servicios del sitio. El límite de Go no garantiza la RSS total del proceso ni del VPS. Prueba con tus sitios reales, observando picos durante TLS, HTTP/2, tráfico y recargas de configuración. Configura un servicio sin privilegios y limita los recursos mediante systemd/cgroups.
+
+## Nombre oficial y actualizaciones del proyecto original
+
+El nombre oficial de esta distribución es **`caddys`**. La nueva entrada `cmd/caddys/main.go` permite compilar con `go build ./cmd/caddys` sin modificar el `cmd/caddy/main.go` de upstream; `make build` genera `caddys` y `make dist-linux` produce los paquetes Linux x86-64 y ARM64 y las sumas SHA-256.
+
+Para actualizar la base, se conserva el remoto `upstream` de `https://github.com/caddyserver/caddy.git` y **no se cambia el módulo Go ni `.goreleaser.yml` del original**. Procedimiento: `git fetch upstream --tags`, revisar las etiquetas estables y sus alertas, fusionar la etiqueta elegida en una rama temporal y ejecutar `make test` más pruebas reales antes de desplegar. No se incorporan cambios del original automáticamente sin revisarlos.
 
 ## Eliminación automática de comentarios al servir archivos
 
