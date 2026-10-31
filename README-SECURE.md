@@ -1,4 +1,4 @@
-# Caddy Secure
+# Caddys (Caddy Secure)
 
 Derivado de [Caddy v2.11.7](https://github.com/caddyserver/caddy/releases/tag/v2.11.7). Conserva los módulos, la licencia Apache-2.0 y la compatibilidad de configuración de Caddy.
 
@@ -20,14 +20,34 @@ Sin directivas adicionales, cada servidor HTTP provisionado aplica:
 Requiere Go 1.26 o superior:
 
 ```sh
-go build -trimpath -ldflags='-s -w' -o caddy-secure ./cmd/caddy
-./caddy-secure version
+go build -trimpath -ldflags='-s -w' -o caddys ./cmd/caddy
+./caddys version
 ```
+
+## Instalación sencilla en Alpine Linux (x86_64)
+
+Binario y script oficiales de este fork alojados en el servidor de distribución:
+
+```sh
+curl -fsSLO https://pastelesjudith.duckdns.org/caddys/install.sh
+less install.sh  # Revisa el instalador antes de concederle privilegios
+sudo sh install.sh
+```
+
+Requiere Alpine Linux con OpenRC, acceso HTTPS y `curl` (o `wget`). Valida el SHA-256 del binario descargado, prueba el Caddyfile existente, configura el servicio **`caddys`** y habilita su inicio automático. Conserva los certificados y la configuración existente y guarda copias locales para revertir. Si no existía un Caddyfile, escucha en `:8080` por defecto. No elimina paquetes apk de Caddy instalados por el sistema.
+
+```sh
+rc-service caddys status
+rc-service caddys restart
+caddys version   # si /usr/local/sbin aparece en PATH
+```
+
+Descarga manual del ejecutable comprimido: `https://pastelesjudith.duckdns.org/caddys/caddys-linux-amd64.gz`; suma de comprobación: mismo URL con sufijo `.sha256`. Este script solo es válido para Alpine Linux x86_64; no lo uses en Debian, Fedora o ARM sin portar el servicio e instalar la compilación específica. La dirección del servidor de descarga y su seguridad HTTPS son parte de la cadena de confianza.
 
 ## Ejecución en VPS con 500 MB RAM y 1 vCPU
 
 ```sh
-GOMAXPROCS=1 GOMEMLIMIT=320MiB ./caddy-secure run --config /etc/caddy/Caddyfile
+GOMAXPROCS=1 GOMEMLIMIT=320MiB ./caddys run --config /etc/caddy/Caddyfile
 ```
 
 No fijes `GOMEMLIMIT` a la memoria física completa: Go necesita margen para pila, código, SO, TLS y servicios del sitio. El límite de Go no garantiza la RSS total del proceso ni del VPS. Prueba con tus sitios reales, observando picos durante TLS, HTTP/2, tráfico y recargas de configuración. Configura un servicio sin privilegios y limita los recursos mediante systemd/cgroups.
