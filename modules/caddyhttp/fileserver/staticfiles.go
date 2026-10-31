@@ -16,6 +16,7 @@ package fileserver
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -484,61 +485,66 @@ func (fsrv *FileServer) ServeHTTP(w http.ResponseWriter, r *http.Request, next c
 	// see #5849
 	respHeader.Add("Vary", "Accept-Encoding")
 
+	// Sanitizable assets must come from the original source; sidecar compression
+	// could contain comments and bypass automatic response sanitization.
+	sanitizable := sanitizableAssetType(filename) != ""
 	// check for precompressed files
-	for _, ae := range encode.AcceptedEncodings(r, fsrv.PrecompressedOrder) {
-		precompress, ok := fsrv.precompressors[ae]
-		if !ok {
-			continue
-		}
-		compressedFilename := filename + precompress.Suffix()
-		compressedInfo, err := fs.Stat(fileSystem, compressedFilename)
-		if err != nil || compressedInfo.IsDir() {
-			if c := fsrv.logger.Check(zapcore.DebugLevel, "precompressed file not accessible"); c != nil {
+	if !sanitizable {
+		for _, ae := range encode.AcceptedEncodings(r, fsrv.PrecompressedOrder) {
+			precompress, ok := fsrv.precompressors[ae]
+			if !ok {
+				continue
+			}
+			compressedFilename := filename + precompress.Suffix()
+			compressedInfo, err := fs.Stat(fileSystem, compressedFilename)
+			if err != nil || compressedInfo.IsDir() {
+				if c := fsrv.logger.Check(zapcore.DebugLevel, "precompressed file not accessible"); c != nil {
+					c.Write(zap.String("filename", compressedFilename), zap.Error(err))
+				}
+				continue
+			}
+			if c := fsrv.logger.Check(zapcore.DebugLevel, "opening compressed sidecar file"); c != nil {
 				c.Write(zap.String("filename", compressedFilename), zap.Error(err))
 			}
-			continue
-		}
-		if c := fsrv.logger.Check(zapcore.DebugLevel, "opening compressed sidecar file"); c != nil {
-			c.Write(zap.String("filename", compressedFilename), zap.Error(err))
-		}
-		file, err = fsrv.openFile(fileSystem, compressedFilename, w)
-		if err != nil {
-			if c := fsrv.logger.Check(zapcore.WarnLevel, "opening precompressed file failed"); c != nil {
-				c.Write(zap.String("filename", compressedFilename), zap.Error(err))
-			}
-			if caddyErr, ok := err.(caddyhttp.HandlerError); ok && caddyErr.StatusCode == http.StatusServiceUnavailable {
-				return err
-			}
-			file = nil
-			continue
-		}
-		defer file.Close()
-		respHeader.Set("Content-Encoding", ae)
-
-		// stdlib won't set Content-Length for non-range requests if Content-Encoding is set.
-		// see: https://github.com/caddyserver/caddy/issues/7040
-		// Setting the Range header manually will result in 206 Partial Content.
-		// see: https://github.com/caddyserver/caddy/issues/7250
-		if r.Header.Get("Range") == "" {
-			respHeader.Set("Content-Length", strconv.FormatInt(compressedInfo.Size(), 10))
-		}
-
-		// try to get the etag from pre computed files if an etag suffix list was provided
-		if etag == "" && fsrv.EtagFileExtensions != nil {
-			etag, err = fsrv.getEtagFromFile(fileSystem, compressedFilename)
+			file, err = fsrv.openFile(fileSystem, compressedFilename, w)
 			if err != nil {
-				return err
+				if c := fsrv.logger.Check(zapcore.WarnLevel, "opening precompressed file failed"); c != nil {
+					c.Write(zap.String("filename", compressedFilename), zap.Error(err))
+				}
+				if caddyErr, ok := err.(caddyhttp.HandlerError); ok && caddyErr.StatusCode == http.StatusServiceUnavailable {
+					return err
+				}
+				file = nil
+				continue
 			}
-		}
+			defer file.Close()
+			respHeader.Set("Content-Encoding", ae)
 
-		// don't assign info = compressedInfo because sidecars are kind
-		// of transparent; however we do need to set the Etag:
-		// https://caddy.community/t/gzipped-sidecar-file-wrong-same-etag/16793
-		if etag == "" {
-			etag = calculateEtag(compressedInfo)
-		}
+			// stdlib won't set Content-Length for non-range requests if Content-Encoding is set.
+			// see: https://github.com/caddyserver/caddy/issues/7040
+			// Setting the Range header manually will result in 206 Partial Content.
+			// see: https://github.com/caddyserver/caddy/issues/7250
+			if r.Header.Get("Range") == "" {
+				respHeader.Set("Content-Length", strconv.FormatInt(compressedInfo.Size(), 10))
+			}
 
-		break
+			// try to get the etag from pre computed files if an etag suffix list was provided
+			if etag == "" && fsrv.EtagFileExtensions != nil {
+				etag, err = fsrv.getEtagFromFile(fileSystem, compressedFilename)
+				if err != nil {
+					return err
+				}
+			}
+
+			// don't assign info = compressedInfo because sidecars are kind
+			// of transparent; however we do need to set the Etag:
+			// https://caddy.community/t/gzipped-sidecar-file-wrong-same-etag/16793
+			if etag == "" {
+				etag = calculateEtag(compressedInfo)
+			}
+
+			break
+		}
 	}
 
 	// no precompressed file found, use the actual file
@@ -641,7 +647,25 @@ func (fsrv *FileServer) ServeHTTP(w http.ResponseWriter, r *http.Request, next c
 	if !usefulModTime(modTime) {
 		modTime = zeroTime
 	}
-	http.ServeContent(w, r, info.Name(), modTime, file.(io.ReadSeeker))
+	// Automatically sanitize source comments at request time, before any
+	// outer encode middleware compresses the response. The bytes on disk
+	// remain unchanged. ServeContent still implements Range, HEAD and
+	// conditional cache requests for the actual sanitized representation.
+	content := io.ReadSeeker(file.(io.ReadSeeker))
+	if sanitizable {
+		clean, err := sanitizeStaticAsset(filename, content, info.Size())
+		if err != nil {
+			return caddyhttp.Error(http.StatusInternalServerError, err)
+		}
+		content = bytes.NewReader(clean)
+		respHeader.Del("Content-Length")
+		// The original source ETag/Last-Modified may still be cached by
+		// browsers from a previous non-sanitizing Caddy installation.
+		// A content-derived validator forces them to download clean bytes.
+		respHeader.Set("Etag", fmt.Sprintf("\"sc-%x\"", sha256.Sum256(clean)))
+		modTime = time.Time{}
+	}
+	http.ServeContent(w, r, info.Name(), modTime, content)
 
 	return nil
 }

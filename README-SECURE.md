@@ -32,18 +32,16 @@ GOMAXPROCS=1 GOMEMLIMIT=320MiB ./caddy-secure run --config /etc/caddy/Caddyfile
 
 No fijes `GOMEMLIMIT` a la memoria física completa: Go necesita margen para pila, código, SO, TLS y servicios del sitio. El límite de Go no garantiza la RSS total del proceso ni del VPS. Prueba con tus sitios reales, observando picos durante TLS, HTTP/2, tráfico y recargas de configuración. Configura un servicio sin privilegios y limita los recursos mediante systemd/cgroups.
 
-## Retirar comentarios de archivos estáticos (operación de despliegue)
+## Eliminación automática de comentarios al servir archivos
 
-Se incluye `tools/sanitize-assets`, una utilidad separada para no añadir costo de CPU/RAM al proceso de Caddy. Produce un directorio **nuevo**, dejando los archivos originales intactos:
+**Activada por defecto en `file_server`:** Caddy lee la versión fuente de cada recurso `.html`, `.htm`, `.css`, `.js`, `.mjs` o `.cjs`, analiza su sintaxis y quita comentarios HTML/CSS/JavaScript **antes de transmitir la respuesta**. El archivo de origen nunca se modifica. Los comentarios en JavaScript o CSS incrustados en el HTML también se eliminan. No requiere un preprocesador, configuración ni cambiar `root`. La compresión `encode gzip` sigue funcionando después de la transformación.
 
-```sh
-cd tools/sanitize-assets
-go run . -input /ruta/sitio-original -output /ruta/sitio-publico
-```
+- Las respuestas `GET`, `HEAD`, solicitudes `Range` y validadores de caché se aplican al contenido resultante, no al archivo original. El ETag usa un hash del cuerpo limpio. Se omite `Last-Modified` en recursos transformados para impedir un HTTP 304 sobre versiones anteriores con comentarios.
+- Recursos binarios, imágenes y descargas no se modifican. Las extensiones de texto no listadas (por ejemplo `.txt`, `.svg` o respuestas de aplicaciones `reverse_proxy`) **no se sanitizan aún**. El minificador tampoco oculta el código fuente de JavaScript que el navegador necesita ejecutar.
+- Para impedir consumos excesivos de RAM en un VPS pequeño, archivos mayores de 2 MiB de los tipos anteriores y HTML con plantillas no compiladas fallan sin publicar la fuente original. Si sirves archivos más grandes, compílalos u optimízalos antes de servirlos; no es un WAF ni un mecanismo de protección de datos secretos.
+- Revisa CSP con hashes, SRI y licencias/avisos legales antes de habilitar esta transformación en sitios de terceros.
 
-La utilidad usa un parser de HTML/CSS/JS, no expresiones regulares. También excluye `.env`, `.git` y archivos `.map`, y rechaza enlaces simbólicos y plantillas HTML no compiladas. En el Caddyfile configura `root` para apuntar al directorio generado. Verifica la web antes de publicarla; la transformación puede invalidar SRI, CSP basada en hashes, firmas o cachés existentes. Conserva los avisos legales/licencias requeridos en la distribución.
-
-No oculta el código JavaScript que necesariamente recibe el navegador, ni altera el historial Git de un repositorio público. Las rutas `.git` y mapas de fuentes se bloquean por defecto incluso sin ejecutar la utilidad. El contenido HTML generado por aplicaciones backend no se transforma.
+También permanece la herramienta opcional `tools/sanitize-assets` para preparar un directorio estático **antes** de desplegarlo. Ya no es necesaria para usar la eliminación automática del `file_server`.
 
 ## Brotli (CVE-2026-111497)
 
