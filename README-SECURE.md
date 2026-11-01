@@ -2,6 +2,18 @@
 
 Derivado de [Caddy v2.11.7](https://github.com/caddyserver/caddy/releases/tag/v2.11.7). Conserva los módulos, la licencia Apache-2.0 y la compatibilidad de configuración de Caddy.
 
+## Asistente CLI de sitios web (opcional)
+
+`caddys site add` permite dar de alta sitios estáticos con **carpeta predeterminada `/var/www/<dominio>`**, Caddyfile individual, HTTPS automático/Cloudflare/Cloudflared Tunnel, comprobación de configuración y respaldo. `caddys site list` muestra los sitios creados mediante el asistente. `caddys site doctor <dominio>` comprueba permisos **sin modificarlos** y solo `--fix-permissions` los corrige de forma explícita.
+
+```sh
+sudo caddys site add
+caddys site --help
+sudo caddys site doctor ejemplo.com
+```
+
+**[Manual completo del CLI, banderas, ejemplos y precauciones](docs/CADDYS-CLI.md).** Pruebas adicionales: `make test-site`. Los comandos originales de Caddy y la edición manual de Caddyfile siguen disponibles. No se modifican automáticamente los sitios existentes.
+
 ## Protección predeterminada
 
 Sin directivas adicionales, cada servidor HTTP provisionado aplica:

@@ -4,15 +4,19 @@ LDFLAGS := -s -w
 SOURCE := ./cmd/caddys
 DIST := dist-caddys
 
-.PHONY: build test dist-linux clean
+.PHONY: build test test-site dist-linux clean
 
 # Canonical local compilation: ./caddys (./caddys.exe on Windows).
 build:
 	CGO_ENABLED=0 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o caddys$(if $(filter windows,$(shell $(GO) env GOOS)),.exe,) $(SOURCE)
 
 test:
-	$(GO) test ./modules/caddyhttp ./modules/caddyhttp/fileserver
+	$(GO) test ./cmd/caddys/sitecli ./modules/caddyhttp ./modules/caddyhttp/fileserver
 	cd tools/sanitize-assets && $(GO) test ./...
+
+# End-to-end tests using a temporary Caddyfile and directories.
+test-site: build
+	./tools/test-caddys-site-cli.sh
 
 # Official distributable binaries for our Linux installer, with reproducible names.
 dist-linux:
